@@ -11,8 +11,6 @@ pub fn runHTTPServer() void {
     defer std.debug.assert(gpa_alloc.deinit() == .ok);
     const gpa = gpa_alloc.allocator();
 
-    _ = gpa;
-
     const port: u16 = 8080;
     const hostaddress: [4]u8 = .{ 0, 0, 0, 0 };
 
@@ -38,7 +36,7 @@ pub fn runHTTPServer() void {
         var buffer: [1024]u8 = undefined;
 
         while (true) {
-            const request = req.parseRequest(client_reader, &buffer) catch |err| {
+            var request = req.parseRequest(gpa, client_reader, &buffer) catch |err| {
                 if (err == error.ConnectionClosed) {
                     std.log.info("Client closed connection", .{});
                     break;
@@ -47,7 +45,8 @@ pub fn runHTTPServer() void {
                 break;
             };
 
-            std.log.info("Version: {s}, Method: {s}, Path: {s}", .{ request.version, request.method, request.path });
+            std.log.info("Version: {short}, Method: {s}, Path: {s}", .{ request.version, request.method, request.path });
+            std.log.info("Postman-Token: {s}", .{request.headers.get("Postman-Token") orelse "n/a"});
         }
     }
 }

@@ -18,8 +18,14 @@ pub const Version = enum(u8) {
     }
 
     pub fn format(self: Version, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = fmt;
         _ = options;
-        try writer.writeAll(self.toBytes());
+        if (std.mem.eql(u8, fmt, "short")) {
+            try writer.writeAll(switch (self) {
+                .Http1_0 => "1.0",
+                .Http1_1 => "1.1",
+            });
+        } else {
+            try writer.writeAll(self.toBytes());
+        }
     }
 };

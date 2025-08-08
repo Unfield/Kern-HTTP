@@ -1,6 +1,7 @@
 const std = @import("std");
 const Method = @import("method.zig").Method;
 const Version = @import("version.zig").Version;
+const Headers = @import("headers.zig").Headers;
 
 const ParseError = error{
     AllocatorInvalid,
@@ -15,10 +16,10 @@ pub const HttpRequest = struct {
     method: Method,
     path: []const u8,
     version: Version,
-    headers: []const u8,
+    headers: Headers,
 };
 
-pub fn parseRequest(reader: std.net.Stream.Reader, buffer: []u8) !HttpRequest {
+pub fn parseRequest(allocator: std.mem.Allocator, reader: std.net.Stream.Reader, buffer: []u8) !HttpRequest {
     var buf_len: usize = 0;
 
     while (true) {
@@ -43,7 +44,6 @@ pub fn parseRequest(reader: std.net.Stream.Reader, buffer: []u8) !HttpRequest {
             };
 
             const headers_start = request_line.len + 2;
-            const headers = header_block[headers_start..];
 
             return HttpRequest{
                 .method = Method.fromBytes(method) orelse {
@@ -53,10 +53,31 @@ pub fn parseRequest(reader: std.net.Stream.Reader, buffer: []u8) !HttpRequest {
                 .version = Version.fromBytes(version) orelse {
                     return ParseError.VersionInvalid;
                 },
-                .headers = headers,
+                .headers = parseHeaders(allocator, header_block[headers_start..]) catch {
+                    return ParseError.HeadersInvalid;
+                },
             };
         }
     }
 
     return ParseError.ConnectionClosed;
+}
+
+fn parseHeaders(
+    allocator: std.mem.Allocator,
+    raw: []const u8,
+) !Headers {
+    var headers = Headers.init(allocator);
+
+    var lines = std.mem.splitSequence(u8, raw, "\r\n");
+    while (lines.next()) |line| {
+        if (line.len == 0) break;
+        if (std.mem.indexOfScalar(u8, line, ':')) |colon_index| {
+            const key = std.mem.trim(u8, line[0..colon_index], " ");
+            const value = std.mem.trim(u8, line[colon_index + 1 ..], " ");
+            try headers.insert(key, value);
+        }
+    }
+
+    return headers;
 }
