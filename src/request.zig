@@ -17,6 +17,27 @@ pub const HttpRequest = struct {
     path: []const u8,
     version: Version,
     headers: Headers,
+
+    pub fn deinit(self: *HttpRequest) void {
+        self.headers.deinit();
+    }
+
+    pub fn shouldClose(self: *HttpRequest) bool {
+        if (self.version == .Http1_0) {
+            return !self.hasHeaderValue("Connection", "keep-alive");
+        }
+        if (self.version == .Http1_1) {
+            return self.hasHeaderValue("Connection", "close");
+        }
+        return true;
+    }
+
+    pub fn hasHeaderValue(self: HttpRequest, name: []const u8, value: []const u8) bool {
+        if (self.headers.get(name)) |v| {
+            return std.ascii.eqlIgnoreCase(v, value);
+        }
+        return false;
+    }
 };
 
 pub fn parseRequest(allocator: std.mem.Allocator, reader: std.net.Stream.Reader, buffer: []u8) !HttpRequest {

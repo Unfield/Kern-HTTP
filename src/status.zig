@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const HttpStatus = enum(u8) {
+pub const HttpStatus = enum(u16) {
     // 1xx - Informational
     Continue = 100,
     SwitchingProtocols = 101,
@@ -70,6 +70,10 @@ pub const HttpStatus = enum(u8) {
             .SeviceUnavailable => return "Service Unavailable",
             .GatewayTimeout => return "Gateway Timeout",
         }
+    }
+
+    pub fn toInt(self: HttpStatus) u16 {
+        return @intFromEnum(self);
     }
 };
 

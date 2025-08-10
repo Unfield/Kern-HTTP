@@ -1,20 +1,21 @@
 const std = @import("std");
-const req = @import("request.zig");
+const HttpReq = @import("request.zig");
+const HttpRes = @import("response.zig");
 
 pub fn main() !void {
-    runHTTPServer();
+    try runHTTPServer();
 }
 
 // Basic http server might be removed in the future
-pub fn runHTTPServer() void {
+pub fn runHTTPServer() !void {
     var gpa_alloc = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa_alloc.deinit() == .ok);
     const gpa = gpa_alloc.allocator();
 
     const port: u16 = 8080;
-    const hostaddress: [4]u8 = .{ 0, 0, 0, 0 };
+    const hostaddress: []const u8 = "0.0.0.0";
 
-    const addr = std.net.Address.initIp4(hostaddress, port);
+    const addr = try std.net.Address.parseIp4(hostaddress, port);
     var server = addr.listen(.{}) catch |err| {
         std.log.err("Server listening on {s}:{d} ({any})", .{ hostaddress, port, err });
         return;
@@ -23,30 +24,41 @@ pub fn runHTTPServer() void {
     std.log.info("Server listening on {s}:{d}", .{ hostaddress, port });
 
     while (true) {
-        var client = server.accept() catch |err| {
-            std.log.err("Failed to accept connection: {any}", .{err});
-            continue;
+        const conn = try server.accept();
+        _ = try std.Thread.spawn(.{}, handleConnection, .{ gpa, conn });
+    }
+}
+
+fn handleConnection(gpa: std.mem.Allocator, conn: std.net.Server.Connection) !void {
+    defer conn.stream.close();
+
+    const reader = conn.stream.reader();
+    const writer = conn.stream.writer();
+    var buffer: [4096]u8 = undefined;
+
+    while (true) {
+        var request = HttpReq.parseRequest(gpa, reader, &buffer) catch |err| {
+            if (err == error.ConnectionClosed) break;
+            std.log.err("Parse error: {any}", .{err});
+            break;
         };
-        std.log.info("Client connected", .{});
-        defer client.stream.close();
+        defer request.deinit();
 
-        const client_reader = client.stream.reader();
-        //const client_writer = client.stream.writer();
+        var response = HttpRes.HttpResponse.init(gpa);
+        defer response.deinit();
 
-        var buffer: [1024]u8 = undefined;
+        if (request.version == .Http1_0) {
+            try response.headers.insert("Connection", "keep-alive");
+        }
 
-        while (true) {
-            var request = req.parseRequest(gpa, client_reader, &buffer) catch |err| {
-                if (err == error.ConnectionClosed) {
-                    std.log.info("Client closed connection", .{});
-                    break;
-                }
-                std.log.err("Failed to parse http request: {any}", .{err});
-                break;
-            };
+        response.setStatus(.OK);
+        try response.setBody("Hello from Kern HTTP!");
 
-            std.log.info("Version: {short}, Method: {s}, Path: {s}", .{ request.version, request.method, request.path });
-            std.log.info("Postman-Token: {s}", .{request.headers.get("Postman-Token") orelse "n/a"});
+        try response.send(writer);
+
+        if (request.shouldClose() or response.shouldClose()) {
+            std.log.debug("Closed connection: {any}", .{conn.address});
+            break;
         }
     }
 }

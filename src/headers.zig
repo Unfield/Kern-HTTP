@@ -21,8 +21,8 @@ pub const Headers = struct {
 
     pub fn insert(self: *Headers, key: []const u8, value: []const u8) !void {
         const lower_key = try self.toLowerAlloc(key);
-        if (self.map.get(lower_key)) |_| {
-            self.allocator.free(lower_key);
+        if (self.map.fetchRemove(lower_key)) |old_entry| {
+            self.allocator.free(old_entry.key);
         }
         try self.map.put(lower_key, value);
     }
