@@ -51,10 +51,31 @@ fn handleConnection(gpa: std.mem.Allocator, conn: std.net.Server.Connection) !vo
             try response.headers.insert("Connection", "keep-alive");
         }
 
+        const testDataStruct = struct {
+            testData: []const u8,
+        };
+
+        var data: testDataStruct = undefined;
+        try request.bindJson(gpa, testDataStruct, &data);
+
+        std.debug.print("Body: {s}\n", .{data.testData});
+
+        const testData2Struct = struct {
+            testData: []const u8,
+        };
+
+        var data2: testData2Struct = undefined;
+        try request.bindJson(gpa, testData2Struct, &data2);
+
+        std.debug.print("Body2: {s}\n", .{data2.testData});
+
         response.setStatus(.OK);
         try response.setBody("Hello from Kern HTTP!");
 
-        try response.send(writer);
+        response.send(writer) catch {
+            std.log.debug("Failed to send: unknown error", .{});
+            break;
+        };
 
         if (request.shouldClose() or response.shouldClose()) {
             std.log.debug("Closed connection: {any}", .{conn.address});
